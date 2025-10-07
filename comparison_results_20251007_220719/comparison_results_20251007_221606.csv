@@ -1,0 +1,5 @@
+Metric,Userscale,HPA,Improvement (%),Winner
+Throughput (RPS),0.00,0.00,0.00,HPA
+Avg Latency (ms),0.00,0.00,0.00,HPA
+Avg Replicas,0.00,0.00,0.00,HPA
+Overall Winner,Unknown,,,Unknown

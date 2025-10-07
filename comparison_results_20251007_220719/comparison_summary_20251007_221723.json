@@ -1,0 +1,13 @@
+{
+  "test_info": {
+    "timestamp": "2025-10-07T22:17:23.906962",
+    "configuration": {}
+  },
+  "performance_summary": {},
+  "key_metrics": {
+    "overall_winner": "Unknown",
+    "throughput_improvement": 0,
+    "latency_improvement": 0,
+    "resource_efficiency": 0
+  }
+}

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: userscale-config
+  namespace: userscale
+data:
+  ALPHA: "0.4"
+  MIN_REPLICAS: "1"
+  MAX_REPLICAS: "10"
+  USERS_TARGET_PER_POD: "40"
+  CPU_TARGET: "70"
+  GPU_TARGET: "70"
+  SCALE_UP_STEP: "3"
+  SCALE_DOWN_STEP: "1"
+  SYNC_PERIOD: "15"
+  NAMESPACE: "userscale"
+  DEPLOYMENT: "userscale-app"
+  SERVICE_NAME: "userscale-app"
+  APP_PORT: "8000"
+  # GPU_PROM_BASE: "http://prometheus.monitoring:9090"
+
+
