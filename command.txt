@@ -1,0 +1,192 @@
+# Userscale vs HPA Autoscaling Project - Command History
+# Generated on: 2025-10-12
+# Project: B.Tech SEM-VII Project-2
+
+## Prerequisites Setup
+# 1. Check if kubectl is available
+kubectl version --client
+
+# 2. Check if Docker is available
+docker --version
+
+# 3. Check if Python is available
+python --version
+
+# 4. Check Kubernetes cluster status
+kubectl cluster-info
+
+## Project Setup Commands
+
+# 5. Navigate to project directory
+cd "C:\Desktop Data\Education\Academics\B.Tech\SEM-VII\Project-2\userscale_2\Mega_Project_SEMVII"
+
+# 6. Clean up Python cache
+if (Test-Path "loadgen\__pycache__") { Remove-Item -Recurse -Force "loadgen\__pycache__" }
+
+## Docker Image Building
+
+# 7. Build userscale-app Docker image
+docker build -f Dockerfile.app -t userscale-app:local .
+
+# 8. Build userscale-scaler Docker image
+docker build -f Dockerfile.scaler -t userscale-scaler:local .
+
+## Kubernetes Deployment
+
+# 9. Create namespace
+kubectl apply -f k8s/namespace.yaml
+
+# 10. Apply configuration
+kubectl apply -f k8s/configmap.yaml
+
+# 11. Apply RBAC permissions
+kubectl apply -f k8s/rbac.yaml
+
+# 12. Deploy application
+kubectl apply -f k8s/app.yaml
+
+# 13. Wait for app deployment to be ready
+kubectl wait --for=condition=available --timeout=300s deployment/userscale-app -n userscale
+
+## Testing and Debugging
+
+# 14. Check pod status
+kubectl get pods -n userscale
+
+# 15. Check pod details
+kubectl get pods -n userscale -o wide
+
+# 16. Check service status
+kubectl get svc -n userscale
+
+# 17. Test connection using pod exec
+kubectl exec -n userscale userscale-app-67d84d75c5-ghj5h -- curl -s "http://userscale-app.userscale.svc.cluster.local:8000/healthz"
+
+# 18. Test matrix endpoint
+kubectl exec -n userscale userscale-app-67d84d75c5-ghj5h -- curl -s "http://userscale-app.userscale.svc.cluster.local:8000/matrix?size=100"
+
+# 19. Run simple load test
+python simple_load_test.py
+
+# 20. Run cluster load generator test
+python loadgen_cluster.py --concurrency 5 --duration 30 --size 1000
+
+## Comparison Testing
+
+# 21. Run working comparison test (Userscale vs HPA)
+python working_comparison_test.py --duration 60 --namespace userscale
+
+# 22. Run original comparison test (for reference)
+python comparison_test.py --duration 120 --namespace userscale
+
+## Results Analysis
+
+# 23. Check results directory
+ls comparison_results_*
+
+# 24. View detailed results
+cat comparison_results_20251012_191058/detailed_results.json
+
+# 25. View CSV results
+cat comparison_results_20251012_191058/comparison_results_20251012_191058.csv
+
+# 26. Open HTML report (in browser)
+# comparison_results_20251012_191058/comparison_report_20251012_191058.html
+
+## Demo Script Execution
+
+# 27. Run automated demo
+python demo.py
+
+## Cleanup Commands
+
+# 28. Clean up Kubernetes resources
+kubectl delete namespace userscale
+
+# 29. Clean up Docker images (optional)
+docker rmi userscale-app:local userscale-scaler:local
+
+## Additional Debugging Commands
+
+# 30. Check pod logs
+kubectl logs -l app=userscale-app -n userscale
+
+# 31. Check scaler logs (if running)
+kubectl logs -l app=userscale-scaler -n userscale
+
+# 32. Check HPA status
+kubectl get hpa -n userscale
+
+# 33. Check deployment status
+kubectl get deployments -n userscale
+
+# 34. Check replica count
+kubectl get deployment userscale-app -n userscale -o jsonpath='{.spec.replicas}'
+
+# 35. Check pod count
+kubectl get pods -l app=userscale-app -n userscale --no-headers | wc -l
+
+## Test Connection Methods
+
+# 36. Test port forwarding (if working)
+kubectl port-forward service/userscale-app 8000:8000 -n userscale
+
+# 37. Test service DNS from within cluster
+kubectl run test-pod --image=curlimages/curl --rm -i --restart=Never -n userscale -- curl -s "http://userscale-app.userscale.svc.cluster.local:8000/healthz"
+
+## File Management
+
+# 38. List all result files
+ls -la comparison_results_*/
+
+# 39. View specific result files
+cat userscale_results_*.json
+cat hpa_results_*.json
+
+# 40. Clean up old result directories (optional)
+rm -rf comparison_results_20251007_*
+rm -rf comparison_results_20251009_152350
+
+## Performance Monitoring
+
+# 41. Monitor pods in real-time
+kubectl get pods -n userscale -w
+
+# 42. Monitor deployments
+kubectl get deployments -n userscale -w
+
+# 43. Check resource usage
+kubectl top pods -n userscale
+
+# 44. Check node resources
+kubectl top nodes
+
+## Troubleshooting Commands
+
+# 45. Describe pod for debugging
+kubectl describe pod -l app=userscale-app -n userscale
+
+# 46. Check events
+kubectl get events -n userscale --sort-by='.lastTimestamp'
+
+# 47. Check service endpoints
+kubectl get endpoints -n userscale
+
+# 48. Test connectivity from different pods
+kubectl run debug-pod --image=busybox --rm -it --restart=Never -n userscale -- wget -qO- http://userscale-app.userscale.svc.cluster.local:8000/healthz
+
+## Final Verification
+
+# 49. Verify all components are working
+kubectl get all -n userscale
+
+# 50. Run final test
+python working_comparison_test.py --duration 30 --namespace userscale
+
+## Notes:
+# - All commands were run from the project directory: Mega_Project_SEMVII/
+# - PowerShell was used on Windows, so some commands use PowerShell syntax
+# - The working comparison test uses cluster-based load generation
+# - Results are saved in timestamped directories (comparison_results_YYYYMMDD_HHMMSS/)
+# - HTML reports can be opened in any web browser for visual analysis
+# - The demo script automates the entire process

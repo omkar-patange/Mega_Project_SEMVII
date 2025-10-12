@@ -21,6 +21,7 @@ app = FastAPI(title="Userscale App - GPU-Aware Autoscaling")
 
 start_time = time.time()
 active_users = 0
+concurrent_requests = 0
 latency_hist: Dict[str, list] = {"matrix": [], "stream": [], "gpu_job": []}
 request_count = 0
 total_cpu_time = 0.0
@@ -154,8 +155,9 @@ def healthz():
 
 @app.get("/matrix")
 def matrix(size: int = Query(200, ge=5, le=3000)):
-    global active_users, request_count, total_cpu_time
-    active_users += 1
+    global active_users, concurrent_requests, request_count, total_cpu_time
+    concurrent_requests += 1
+    active_users = concurrent_requests  # Track concurrent requests as active users
     request_count += 1
     t0 = time.time()
     try:
@@ -173,14 +175,16 @@ def matrix(size: int = Query(200, ge=5, le=3000)):
     finally:
         dt = (time.time() - t0) * 1000
         record_latency("matrix", dt)
-        active_users -= 1
+        concurrent_requests -= 1
+        active_users = max(concurrent_requests, 0)
 
 
 @app.get("/gpu_matrix")
 def gpu_matrix(size: int = Query(200, ge=5, le=3000)):
     """GPU-accelerated matrix multiplication endpoint"""
-    global active_users, request_count, total_cpu_time
-    active_users += 1
+    global active_users, concurrent_requests, request_count, total_cpu_time
+    concurrent_requests += 1
+    active_users = concurrent_requests  # Track concurrent requests as active users
     request_count += 1
     t0 = time.time()
     
@@ -205,13 +209,15 @@ def gpu_matrix(size: int = Query(200, ge=5, le=3000)):
     finally:
         dt = (time.time() - t0) * 1000
         record_latency("gpu_job", dt)
-        active_users -= 1
+        concurrent_requests -= 1
+        active_users = max(concurrent_requests, 0)
 
 
 @app.get("/stream")
 def stream(duration_ms: int = Query(1000, ge=1, le=30000)):
-    global active_users
-    active_users += 1
+    global active_users, concurrent_requests
+    concurrent_requests += 1
+    active_users = concurrent_requests  # Track concurrent requests as active users
     t0 = time.time()
     try:
         end = time.time() + duration_ms / 1000.0
@@ -223,13 +229,15 @@ def stream(duration_ms: int = Query(1000, ge=1, le=30000)):
     finally:
         dt = (time.time() - t0) * 1000
         record_latency("stream", dt)
-        active_users -= 1
+        concurrent_requests -= 1
+        active_users = max(concurrent_requests, 0)
 
 
 @app.get("/gpu_job")
 def gpu_job(work_ms: int = Query(1000, ge=1, le=60000)):
-    global active_users
-    active_users += 1
+    global active_users, concurrent_requests
+    concurrent_requests += 1
+    active_users = concurrent_requests  # Track concurrent requests as active users
     t0 = time.time()
     gpu_used = False
     try:
@@ -252,7 +260,8 @@ def gpu_job(work_ms: int = Query(1000, ge=1, le=60000)):
     finally:
         dt = (time.time() - t0) * 1000
         record_latency("gpu_job", dt)
-        active_users -= 1
+        concurrent_requests -= 1
+        active_users = max(concurrent_requests, 0)
 
 
 @app.get("/metrics")

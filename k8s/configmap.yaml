@@ -4,18 +4,18 @@ metadata:
   name: userscale-config
   namespace: userscale
 data:
-  # Enhanced scaling configuration
-  ALPHA: "0.6"                    # More responsive EWMA smoothing
+  # ULTRA AGGRESSIVE scaling configuration for testing
+  ALPHA: "0.9"                    # Extremely responsive EWMA smoothing
   MIN_REPLICAS: "1"
   MAX_REPLICAS: "20"
-  USERS_TARGET_PER_POD: "10"      # Lower threshold for more aggressive scaling
-  CPU_TARGET: "50"                # Lower CPU threshold
-  GPU_TARGET: "60"
-  LATENCY_TARGET_MS: "200"        # New latency threshold
-  SCALE_UP_STEP: "2"
+  USERS_TARGET_PER_POD: "1"       # Scale up with just 1 user!
+  CPU_TARGET: "10"                # Extremely low CPU threshold
+  GPU_TARGET: "20"
+  LATENCY_TARGET_MS: "50"         # Very low latency threshold
+  SCALE_UP_STEP: "5"              # Very large scale-up steps
   SCALE_DOWN_STEP: "1"
-  COOLDOWN_PERIOD: "30"           # Cooldown between scaling operations
-  SYNC_PERIOD: "15"               # Check every 15 seconds
+  COOLDOWN_PERIOD: "5"            # Very short cooldown
+  SYNC_PERIOD: "3"                # Check every 3 seconds
   
   # GPU monitoring configuration
   GPU_PROM_BASE: "http://prometheus:9090"

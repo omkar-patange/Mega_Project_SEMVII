@@ -38,7 +38,7 @@ class LoadGenerator:
 
     def intensive_matrix_load_test(self, concurrency: int, duration: int, matrix_size: int = 2000):
         """Generate VERY intensive matrix multiplication load to trigger scaling"""
-        print(f"🚀 Starting INTENSIVE matrix multiplication load test:")
+        print(f"Starting INTENSIVE matrix multiplication load test:")
         print(f"  Matrix size: {matrix_size}x{matrix_size} ({matrix_size**2:,} elements)")
         print(f"  Concurrency: {concurrency}")
         print(f"  Duration: {duration} seconds")
@@ -54,7 +54,7 @@ class LoadGenerator:
         self.start_time = time.time()
         stop_t = self.start_time + duration
         
-        print(f"⏰ Starting load test at {datetime.now().strftime('%H:%M:%S')}")
+        print(f"Starting load test at {datetime.now().strftime('%H:%M:%S')}")
         
         for i in range(concurrency):
             t = threading.Thread(
@@ -126,7 +126,7 @@ class LoadGenerator:
 
     def burst_load_test(self, concurrency: int, duration: int, burst_cycles: int = 3):
         """Generate burst load patterns to test scaling responsiveness"""
-        print(f"💥 Starting BURST load test:")
+        print(f"Starting BURST load test:")
         print(f"  Burst cycles: {burst_cycles}")
         print(f"  Concurrency per burst: {concurrency}")
         print(f"  Duration: {duration} seconds")
@@ -135,7 +135,7 @@ class LoadGenerator:
         self.start_time = time.time()
         
         for cycle in range(burst_cycles):
-            print(f"\n🔥 Starting burst cycle {cycle + 1}/{burst_cycles}")
+            print(f"\nStarting burst cycle {cycle + 1}/{burst_cycles}")
             
             # Burst period (high load)
             burst_start = time.time()
@@ -165,7 +165,7 @@ class LoadGenerator:
             
             # Rest period (low load)
             rest_duration = duration / burst_cycles * 0.3  # 30% of cycle time
-            print(f"😴 Rest period: {rest_duration:.1f}s")
+            print(f"Rest period: {rest_duration:.1f}s")
             time.sleep(rest_duration)
         
         self.results = results_list
@@ -195,9 +195,9 @@ class LoadGenerator:
                         metrics = response.json()
                         active_users = metrics.get('active_users', 0)
                         cpu_percent = metrics.get('cpu_percent', 0)
-                        print(f"📊 Progress: {elapsed:.1f}s elapsed, {remaining:.1f}s remaining | Active users: {active_users} | CPU: {cpu_percent:.1f}%")
+                        print(f"Progress: {elapsed:.1f}s elapsed, {remaining:.1f}s remaining | Active users: {active_users} | CPU: {cpu_percent:.1f}%")
             except Exception as e:
-                print(f"📊 Progress: {elapsed:.1f}s elapsed, {remaining:.1f}s remaining | Status: {len(results_list)} requests completed")
+                print(f"Progress: {elapsed:.1f}s elapsed, {remaining:.1f}s remaining | Status: {len(results_list)} requests completed")
 
     def _monitor_progress(self, duration: int):
         """Monitor and display progress during load test"""

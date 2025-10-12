@@ -30,27 +30,27 @@ spec:
         - name: APP_PORT
           value: "8000"
         - name: SYNC_PERIOD
-          value: "15"
+          value: "3"
         - name: ALPHA
-          value: "0.6"
+          value: "0.9"
         - name: MIN_REPLICAS
           value: "1"
         - name: MAX_REPLICAS
           value: "20"
         - name: USERS_TARGET_PER_POD
-          value: "10"
+          value: "1"
         - name: CPU_TARGET
-          value: "50"
+          value: "10"
         - name: GPU_TARGET
-          value: "60"
+          value: "20"
         - name: LATENCY_TARGET_MS
-          value: "200"
+          value: "50"
         - name: SCALE_UP_STEP
-          value: "2"
+          value: "5"
         - name: SCALE_DOWN_STEP
           value: "1"
         - name: COOLDOWN_PERIOD
-          value: "30"
+          value: "5"
         - name: GPU_PROM_BASE
           value: "http://prometheus:9090"
         resources:
