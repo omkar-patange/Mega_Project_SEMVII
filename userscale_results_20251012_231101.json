@@ -1,0 +1,61 @@
+{
+  "test_type": "userscale",
+  "timestamp": "2025-10-12T23:11:01.136897",
+  "metrics": {
+    "total_requests": 183,
+    "successful_requests": 57,
+    "failed_requests": 126,
+    "success_rate": 31.147540983606557,
+    "throughput_rps": 0.6998351511766114,
+    "avg_latency_ms": 12312.184509478117,
+    "p95_latency_ms": 16234.389543533325,
+    "total_duration": 81.44775223731995
+  },
+  "scaling_info": {
+    "avg_replicas": 12.0,
+    "max_replicas": 20,
+    "min_replicas": 2,
+    "replica_history": [
+      {
+        "timestamp": 0.0,
+        "replicas": 2,
+        "pods": 0
+      },
+      {
+        "timestamp": 7.290629863739014,
+        "replicas": 4,
+        "pods": 0
+      },
+      {
+        "timestamp": 15.396987438201904,
+        "replicas": 5,
+        "pods": 0
+      },
+      {
+        "timestamp": 26.107696294784546,
+        "replicas": 10,
+        "pods": 0
+      },
+      {
+        "timestamp": 33.850950956344604,
+        "replicas": 15,
+        "pods": 0
+      },
+      {
+        "timestamp": 44.391643047332764,
+        "replicas": 20,
+        "pods": 0
+      },
+      {
+        "timestamp": 51.17730188369751,
+        "replicas": 20,
+        "pods": 0
+      },
+      {
+        "timestamp": 57.53931474685669,
+        "replicas": 20,
+        "pods": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,135 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Userscale vs HPA Efficiency Comparison</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #333; margin-bottom: 10px; }
+        .header p { color: #666; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .metric-card { background-color: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff; }
+        .metric-title { font-weight: bold; color: #333; margin-bottom: 10px; }
+        .metric-value { font-size: 24px; color: #007bff; margin-bottom: 5px; }
+        .metric-improvement { color: #28a745; font-weight: bold; }
+        .metric-decline { color: #dc3545; font-weight: bold; }
+        .winner-badge { display: inline-block; background-color: #28a745; color: white; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; }
+        .loser-badge { display: inline-block; background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; }
+        .summary { background-color: #e9ecef; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+        .summary h2 { color: #333; margin-bottom: 15px; }
+        .config-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        .config-table th, .config-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        .config-table th { background-color: #f8f9fa; }
+        .chart-container { margin: 20px 0; }
+        .bar-chart { display: flex; align-items: end; height: 200px; gap: 10px; }
+        .bar { display: flex; flex-direction: column; align-items: center; }
+        .bar-fill { background-color: #007bff; margin-bottom: 5px; border-radius: 4px 4px 0 0; min-height: 20px; }
+        .bar-label { font-size: 12px; }
+        .bar-value { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1> Userscale vs HPA Efficiency Comparison</h1>
+            <p>Generated on 2025-10-12 23:13:30</p>
+        </div>
+        
+        <div class="summary">
+            <h2> Executive Summary</h2>
+            <p><strong>Overall Winner:</strong> <span class="winner-badge">HPA</span></p>
+            <p>This comparison evaluates the efficiency of Userscale (user-aware scaling) vs HPA (Horizontal Pod Autoscaler) under intensive matrix multiplication load with 2000 elements.</p>
+        </div>
+        
+        <h2> Test Configuration</h2>
+        <table class="config-table">
+            <tr><th>Parameter</th><th>Value</th></tr>
+            <tr><td>Namespace</td><td>userscale</td></tr>
+            <tr><td>Concurrency</td><td>25 workers</td></tr>
+            <tr><td>Duration</td><td>N/A seconds</td></tr>
+            <tr><td>Matrix Size</td><td>2000 elements</td></tr>
+        </table>
+        
+        <h2> Performance Metrics</h2>
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-title">Throughput (RPS)</div>
+                <div class="metric-value">0.70</div>
+                <div class="metric-improvement">
+                    -72.18% vs HPA
+                </div>
+                <div style="margin-top: 10px;">
+                    <span class="loser-badge">Behind</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-title">Average Latency (ms)</div>
+                <div class="metric-value">12312.18</div>
+                <div class="metric-improvement">
+                    -29.78% vs HPA
+                </div>
+                <div style="margin-top: 10px;">
+                    <span class="loser-badge">Behind</span>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-title">Average Replicas</div>
+                <div class="metric-value">12.00</div>
+                <div class="metric-improvement">
+                    +66.67% vs HPA
+                </div>
+                <div style="margin-top: 10px;">
+                    <span class="winner-badge">Winner</span>
+                </div>
+            </div>
+        </div>
+        
+        <h2> Detailed Comparison</h2>
+        <table class="config-table">
+            <tr><th>Metric</th><th>Userscale</th><th>HPA</th><th>Improvement</th><th>Winner</th></tr>
+            <tr>
+                <td>Throughput (RPS)</td>
+                <td>0.70</td>
+                <td>2.52</td>
+                <td>-72.18%</td>
+                <td>HPA</td>
+            </tr>
+            <tr>
+                <td>Avg Latency (ms)</td>
+                <td>12312.18</td>
+                <td>9487.25</td>
+                <td>-29.78%</td>
+                <td>HPA</td>
+            </tr>
+            <tr>
+                <td>Avg Replicas</td>
+                <td>12.00</td>
+                <td>20.00</td>
+                <td>+66.67%</td>
+                <td>Userscale</td>
+            </tr>
+        </table>
+        
+        <h2> Key Findings</h2>
+        <ul>
+            <li><strong>Throughput:</strong> ❌ HPA delivers better throughput</li>
+            <li><strong>Latency:</strong> ❌ HPA provides lower latency</li>
+            <li><strong>Resource Efficiency:</strong> ✅ Userscale uses resources more efficiently</li>
+        </ul>
+        
+        <h2> Recommendations</h2>
+        <p>Based on the test results, <strong>hpa</strong> demonstrates superior performance for matrix multiplication workloads with 2000 elements.</p>
+        
+        <div style="margin-top: 40px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; text-align: center; color: #666;">
+            <p>Report generated by Userscale Efficiency Comparison Tool</p>
+            <p>For more details, see the detailed JSON results file.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,5 @@
+﻿Metric,Userscale,HPA,Improvement (%),Winner
+Throughput (RPS),0.70,2.52,-72.18,HPA
+Avg Latency (ms),12312.18,9487.25,-29.78,HPA
+Avg Replicas,12.00,20.00,66.67,Userscale
+Overall Winner,hpa,,,hpa
