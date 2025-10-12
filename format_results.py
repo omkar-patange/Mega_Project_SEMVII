@@ -12,6 +12,7 @@ import json
 import csv
 import argparse
 import os
+import glob
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -23,6 +24,16 @@ class ResultsFormatter:
     
     def _load_results(self) -> Dict[str, Any]:
         """Load results from JSON file"""
+        # Handle wildcard patterns in file path
+        if '*' in self.results_file:
+            matching_files = glob.glob(self.results_file)
+            if not matching_files:
+                print(f"No files found matching pattern: {self.results_file}")
+                return {}
+            # Use the most recent file if multiple matches
+            self.results_file = max(matching_files, key=os.path.getmtime)
+            print(f"Using results file: {self.results_file}")
+        
         try:
             with open(self.results_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -142,17 +153,17 @@ class ResultsFormatter:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Userscale vs HPA Efficiency Comparison</h1>
+            <h1> Userscale vs HPA Efficiency Comparison</h1>
             <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         </div>
         
         <div class="summary">
-            <h2>📊 Executive Summary</h2>
+            <h2> Executive Summary</h2>
             <p><strong>Overall Winner:</strong> <span class="winner-badge">{comparison.get('summary', {}).get('overall_winner', 'Unknown').upper()}</span></p>
             <p>This comparison evaluates the efficiency of Userscale (user-aware scaling) vs HPA (Horizontal Pod Autoscaler) under intensive matrix multiplication load with {config.get('matrix_size', 'N/A')} elements.</p>
         </div>
         
-        <h2>⚙️ Test Configuration</h2>
+        <h2> Test Configuration</h2>
         <table class="config-table">
             <tr><th>Parameter</th><th>Value</th></tr>
             <tr><td>Namespace</td><td>{config.get('namespace', 'N/A')}</td></tr>
@@ -161,7 +172,7 @@ class ResultsFormatter:
             <tr><td>Matrix Size</td><td>{config.get('matrix_size', 'N/A')} elements</td></tr>
         </table>
         
-        <h2>📈 Performance Metrics</h2>
+        <h2> Performance Metrics</h2>
         <div class="metrics-grid">
             <div class="metric-card">
                 <div class="metric-title">Throughput (RPS)</div>
@@ -197,7 +208,7 @@ class ResultsFormatter:
             </div>
         </div>
         
-        <h2>📊 Detailed Comparison</h2>
+        <h2> Detailed Comparison</h2>
         <table class="config-table">
             <tr><th>Metric</th><th>Userscale</th><th>HPA</th><th>Improvement</th><th>Winner</th></tr>
             <tr>
@@ -223,14 +234,14 @@ class ResultsFormatter:
             </tr>
         </table>
         
-        <h2>🎯 Key Findings</h2>
+        <h2> Key Findings</h2>
         <ul>
             <li><strong>Throughput:</strong> {'✅ Userscale delivers better throughput' if comparison.get('summary', {}).get('userscale_better_throughput', False) else '❌ HPA delivers better throughput'}</li>
             <li><strong>Latency:</strong> {'✅ Userscale provides lower latency' if comparison.get('summary', {}).get('userscale_better_latency', False) else '❌ HPA provides lower latency'}</li>
             <li><strong>Resource Efficiency:</strong> {'✅ Userscale uses resources more efficiently' if comparison.get('summary', {}).get('userscale_more_efficient', False) else '❌ HPA uses resources more efficiently'}</li>
         </ul>
         
-        <h2>💡 Recommendations</h2>
+        <h2> Recommendations</h2>
         <p>Based on the test results, <strong>{comparison.get('summary', {}).get('overall_winner', 'Unknown')}</strong> demonstrates superior performance for matrix multiplication workloads with {config.get('matrix_size', 'N/A')} elements.</p>
         
         <div style="margin-top: 40px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; text-align: center; color: #666;">
@@ -280,6 +291,13 @@ def main():
                        default=["csv", "html", "json"], help="Output formats to generate")
     
     args = parser.parse_args()
+    
+    # Handle wildcard patterns in output directory
+    if '*' in args.output_dir:
+        # Replace wildcard with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.output_dir = args.output_dir.replace('*', timestamp)
+        print(f"Using timestamp-based output directory: {args.output_dir}")
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)

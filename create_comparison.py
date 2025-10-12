@@ -60,11 +60,11 @@ def main():
     with open('comparison_results_20251007_220719/detailed_results.json', 'w') as f:
         json.dump(comparison_data, f, indent=2)
 
-    print('✅ Created detailed_results.json with proper comparison structure')
-    print(f'📊 Userscale Throughput: {us_metrics["throughput_rps"]:.2f} RPS')
-    print(f'📊 HPA Throughput: {hpa_metrics["throughput_rps"]:.2f} RPS')
-    print(f'📈 Throughput Improvement: {throughput_improvement:.2f}%')
-    print(f'🏆 Overall Winner: {comparison_data["comparison_results"]["summary"]["overall_winner"].upper()}')
+    print(' Created detailed_results.json with proper comparison structure')
+    print(f' Userscale Throughput: {us_metrics["throughput_rps"]:.2f} RPS')
+    print(f' HPA Throughput: {hpa_metrics["throughput_rps"]:.2f} RPS')
+    print(f' Throughput Improvement: {throughput_improvement:.2f}%')
+    print(f' Overall Winner: {comparison_data["comparison_results"]["summary"]["overall_winner"].upper()}')
 
 if __name__ == "__main__":
     main()

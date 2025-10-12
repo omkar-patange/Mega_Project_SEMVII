@@ -81,6 +81,7 @@ python create_comparison.py
 
 # 16. Generate formatted reports
 python format_results.py --results comparison_results_*/detailed_results.json --output-dir comparison_results_* --formats csv html json
+# Note: Wildcards (*) in both --results and --output-dir will be automatically resolved
 # Description: Create HTML, CSV, and JSON formatted reports
 
 # 17. View results directory

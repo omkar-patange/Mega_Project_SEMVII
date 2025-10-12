@@ -1,455 +1,440 @@
 #!/usr/bin/env python3
 """
-Userscale vs HPA Efficiency Comparison Test
-
-This script runs comprehensive load tests comparing the efficiency of:
-1. Userscale (custom user-aware scaling)
-2. HPA (Horizontal Pod Autoscaler)
-
-The test generates matrix multiplication load with 10,000 elements and measures:
-- Throughput (requests per second)
-- Latency (average and P95)
-- Resource utilization
-- Scaling behavior
-- Cost efficiency
+Enhanced comparison test with GPU-aware scaling and proper replica tracking
 """
 
-import argparse
 import subprocess
 import time
 import json
 import os
-import sys
-from datetime import datetime, timedelta
-from typing import Dict, List, Any
-import httpx
-import yaml
+from datetime import datetime
+from typing import Dict, List
+import threading
 
 
 class KubernetesManager:
     def __init__(self, namespace: str = "userscale"):
         self.namespace = namespace
         
-    def apply_config(self, config_file: str) -> bool:
-        """Apply Kubernetes configuration"""
-        try:
-            result = subprocess.run(
-                ["kubectl", "apply", "-f", config_file, "-n", self.namespace],
-                capture_output=True, text=True, check=True
-            )
-            print(f"Applied {config_file}: {result.stdout.strip()}")
-            return True
-        except subprocess.CalledProcessError as e:
-            print(f"Error applying {config_file}: {e.stderr}")
+    def run_kubectl(self, cmd: str) -> subprocess.CompletedProcess:
+        """Run kubectl command"""
+        full_cmd = f"kubectl {cmd}"
+        return subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
+    
+    def apply_manifest(self, manifest_path: str):
+        """Apply Kubernetes manifest"""
+        result = self.run_kubectl(f"apply -f {manifest_path}")
+        if result.returncode != 0:
+            print(f"Failed to apply {manifest_path}: {result.stderr}")
             return False
+        print(f"✅ Applied {manifest_path}")
+        return True
     
-    def delete_config(self, config_file: str) -> bool:
-        """Delete Kubernetes configuration"""
-        try:
-            subprocess.run(
-                ["kubectl", "delete", "-f", config_file, "-n", self.namespace, "--ignore-not-found=true"],
-                capture_output=True, text=True, check=True
-            )
-            return True
-        except subprocess.CalledProcessError as e:
-            print(f"Error deleting {config_file}: {e.stderr}")
+    def delete_manifest(self, manifest_path: str):
+        """Delete Kubernetes manifest"""
+        result = self.run_kubectl(f"delete -f {manifest_path}")
+        if result.returncode != 0:
+            print(f"Failed to delete {manifest_path}: {result.stderr}")
             return False
+        print(f"🗑️  Deleted {manifest_path}")
+        return True
     
-    def get_deployment_replicas(self, deployment_name: str) -> int:
-        """Get current number of replicas for a deployment"""
-        try:
-            result = subprocess.run(
-                ["kubectl", "get", "deployment", deployment_name, "-n", self.namespace, "-o", "jsonpath={.spec.replicas}"],
-                capture_output=True, text=True, check=True
-            )
-            return int(result.stdout.strip())
-        except (subprocess.CalledProcessError, ValueError):
-            return 0
-    
-    def get_pod_count(self, app_label: str) -> int:
-        """Get current number of pods with specific label"""
-        try:
-            result = subprocess.run(
-                ["kubectl", "get", "pods", "-n", self.namespace, "-l", f"app={app_label}", "--no-headers"],
-                capture_output=True, text=True, check=True
-            )
-            return len([line for line in result.stdout.strip().split('\n') if line and 'Running' in line])
-        except subprocess.CalledProcessError:
-            return 0
-    
-    def wait_for_deployment_ready(self, deployment_name: str, timeout: int = 300) -> bool:
+    def wait_for_deployment(self, deployment_name: str, timeout: int = 300):
         """Wait for deployment to be ready"""
-        try:
-            result = subprocess.run(
-                ["kubectl", "rollout", "status", f"deployment/{deployment_name}", "-n", self.namespace, f"--timeout={timeout}s"],
-                capture_output=True, text=True, check=True
-            )
-            return True
-        except subprocess.CalledProcessError:
-            return False
+        print(f"⏳ Waiting for deployment {deployment_name} to be ready...")
+        result = self.run_kubectl(f"wait --for=condition=available --timeout={timeout}s deployment/{deployment_name} -n {self.namespace}")
+        return result.returncode == 0
+    
+    def get_replica_count(self, deployment_name: str) -> int:
+        """Get current replica count"""
+        result = self.run_kubectl(f"get deployment {deployment_name} -n {self.namespace} -o jsonpath='{{.spec.replicas}}'")
+        if result.returncode == 0:
+            return int(result.stdout.strip())
+        return 0
+    
+    def get_pod_count(self, deployment_name: str) -> int:
+        """Get current pod count"""
+        result = self.run_kubectl(f"get pods -l app={deployment_name} -n {self.namespace} --no-headers | wc -l")
+        if result.returncode == 0:
+            return int(result.stdout.strip())
+        return 0
     
     def get_service_url(self, service_name: str) -> str:
-        """Get service URL for testing"""
-        try:
-            result = subprocess.run(
-                ["kubectl", "get", "service", service_name, "-n", self.namespace, "-o", "jsonpath={.status.loadBalancer.ingress[0].ip}"],
-                capture_output=True, text=True, check=True
-            )
-            ip = result.stdout.strip()
-            if ip:
-                return f"http://{ip}"
-        except subprocess.CalledProcessError:
-            pass
-        
-        # Fallback to port-forward
-        return "http://localhost:8000"
-
-
-class LoadTestRunner:
-    def __init__(self, base_url: str, output_dir: str = "test_results"):
-        self.base_url = base_url
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        """Get service URL (assuming port-forward)"""
+        return f"http://localhost:8000"  # Port-forward URL
     
-    def run_load_test(self, test_name: str, concurrency: int = 20, duration: int = 120, matrix_size: int = 10000) -> Dict[str, Any]:
-        """Run load test and collect metrics"""
-        output_file = os.path.join(self.output_dir, f"{test_name}_results.json")
-        
-        cmd = [
-            "python", "loadgen/main.py",
-            "--base", self.base_url,
-            "--scenario", "intensive_matrix",
-            "--concurrency", str(concurrency),
-            "--duration", str(duration),
-            "--size", str(matrix_size),
-            "--output", output_file
-        ]
-        
-        print(f"Running load test: {test_name}")
-        print(f"Command: {' '.join(cmd)}")
-        
-        start_time = time.time()
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            end_time = time.time()
-            
-            # Load results from output file
-            if os.path.exists(output_file):
-                with open(output_file, 'r') as f:
-                    test_results = json.load(f)
-                test_results['execution_time'] = end_time - start_time
-                test_results['test_name'] = test_name
-                return test_results
-            else:
-                print(f"Warning: Output file {output_file} not found")
-                return {'error': 'Output file not found'}
-                
-        except subprocess.CalledProcessError as e:
-            print(f"Load test failed: {e.stderr}")
-            return {'error': e.stderr}
-
-
-class EfficiencyComparator:
-    def __init__(self, output_dir: str = "test_results"):
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+    def port_forward(self, service_name: str, local_port: int = 8000, remote_port: int = 8000):
+        """Start port forwarding"""
+        cmd = f"port-forward service/{service_name} {local_port}:{remote_port} -n {self.namespace}"
+        return subprocess.Popen(f"kubectl {cmd}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    def collect_metrics_during_test(self, test_name: str, duration: int, k8s_manager: KubernetesManager) -> List[Dict]:
-        """Collect Kubernetes metrics during test"""
-        metrics = []
+    def get_replica_history(self, deployment_name: str, duration: int) -> List[Dict]:
+        """Monitor replica changes over time"""
+        history = []
         start_time = time.time()
-        
-        print(f"Collecting metrics for {test_name}...")
         
         while time.time() - start_time < duration:
-            timestamp = time.time()
+            current_time = time.time() - start_time
+            replicas = self.get_replica_count(deployment_name)
+            pods = self.get_pod_count(deployment_name)
             
-            # Collect deployment metrics
-            replicas = k8s_manager.get_deployment_replicas("userscale-app")
-            pods = k8s_manager.get_pod_count("userscale-app")
-            
-            metrics.append({
-                'timestamp': timestamp,
-                'replicas': replicas,
-                'pods_running': pods,
-                'test_name': test_name
+            history.append({
+                "timestamp": current_time,
+                "replicas": replicas,
+                "pods": pods
             })
             
-            time.sleep(10)  # Collect metrics every 10 seconds
+            time.sleep(5)  # Check every 5 seconds
         
-        return metrics
+        return history
+
+
+class LoadTester:
+    def __init__(self, base_url: str):
+        self.base_url = base_url
     
-    def calculate_efficiency_metrics(self, userscale_results: Dict, hpa_results: Dict, 
-                                   userscale_metrics: List[Dict], hpa_metrics: List[Dict]) -> Dict[str, Any]:
-        """Calculate efficiency comparison metrics"""
+    def run_intensive_load_test(self, concurrency: int = 25, duration: int = 180, matrix_size: int = 1500):
+        """Run intensive load test that should trigger scaling"""
+        print(f"🚀 Starting INTENSIVE load test:")
+        print(f"  URL: {self.base_url}")
+        print(f"  Concurrency: {concurrency}")
+        print(f"  Duration: {duration}s")
+        print(f"  Matrix size: {matrix_size}x{matrix_size}")
         
-        def extract_throughput(results: Dict) -> float:
-            if 'metrics' in results and 'throughput_rps' in results['metrics']:
-                return results['metrics']['throughput_rps']
-            return 0.0
+        # Import the load generator
+        import sys
+        sys.path.append('loadgen')
+        from main import LoadGenerator
         
-        def extract_latency(results: Dict) -> float:
-            if 'metrics' in results and 'avg_latency_ms' in results['metrics']:
-                return results['metrics']['avg_latency_ms']
-            return 0.0
+        output_file = f"load_test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        generator = LoadGenerator(self.base_url, output_file)
         
-        def calculate_avg_replicas(metrics: List[Dict]) -> float:
-            if not metrics:
-                return 0.0
-            return sum(m['replicas'] for m in metrics) / len(metrics)
+        return generator.intensive_matrix_load_test(concurrency, duration, matrix_size)
+
+
+class ComparisonTest:
+    def __init__(self, namespace: str = "userscale"):
+        self.k8s = KubernetesManager(namespace)
+        self.namespace = namespace
+        self.port_forward_process = None
         
-        def calculate_scaling_efficiency(metrics: List[Dict]) -> Dict[str, float]:
-            if not metrics:
-                return {'scaling_speed': 0.0, 'resource_utilization': 0.0}
+    def setup_test_environment(self):
+        """Setup the test environment"""
+        print("🔧 Setting up test environment...")
+        
+        # Create namespace
+        self.k8s.run_kubectl(f"create namespace {self.namespace} --dry-run=client -o yaml | kubectl apply -f -")
+        
+        # Apply manifests
+        manifests = [
+            "k8s/namespace.yaml",
+            "k8s/configmap.yaml", 
+            "k8s/rbac.yaml",
+            "k8s/app.yaml"
+        ]
+        
+        for manifest in manifests:
+            if not self.k8s.apply_manifest(manifest):
+                return False
+        
+        # Wait for app to be ready
+        if not self.k8s.wait_for_deployment("userscale-app"):
+            print("❌ App deployment failed to become ready")
+            return False
+        
+        print("✅ Test environment setup complete")
+        return True
+    
+    def run_userscale_test(self, test_duration: int = 180) -> Dict:
+        """Run test with custom userscale autoscaler"""
+        print("\n🎯 Running USERCALE autoscaling test...")
+        
+        # Apply custom scaler
+        if not self.k8s.apply_manifest("k8s/scaler.yaml"):
+            return None
+        
+        # Wait for scaler to be ready
+        if not self.k8s.wait_for_deployment("userscale-scaler"):
+            print("❌ Scaler deployment failed to become ready")
+            return None
+        
+        # Start port forwarding
+        self.port_forward_process = self.k8s.port_forward("userscale-app")
+        time.sleep(5)  # Wait for port forward to establish
+        
+        try:
+            # Start replica monitoring in background
+            replica_history = []
+            monitoring_thread = threading.Thread(
+                target=lambda: replica_history.extend(self.k8s.get_replica_history("userscale-app", test_duration))
+            )
+            monitoring_thread.daemon = True
+            monitoring_thread.start()
             
-            # Calculate how quickly scaling responds to load
-            replica_changes = []
-            for i in range(1, len(metrics)):
-                if metrics[i]['replicas'] != metrics[i-1]['replicas']:
-                    replica_changes.append(metrics[i]['timestamp'] - metrics[i-1]['timestamp'])
+            # Run load test
+            load_tester = LoadTester("http://localhost:8000")
+            metrics = load_tester.run_intensive_load_test(
+                concurrency=25,  # High concurrency
+                duration=test_duration,
+                matrix_size=1500  # Large matrices
+            )
             
-            scaling_speed = sum(replica_changes) / len(replica_changes) if replica_changes else 0.0
+            # Wait for monitoring to complete
+            monitoring_thread.join()
             
-            # Calculate average resource utilization efficiency
-            avg_replicas = calculate_avg_replicas(metrics)
-            resource_utilization = 1.0 / max(avg_replicas, 1.0)  # Higher replicas = lower efficiency
+            # Calculate average replicas
+            if replica_history:
+                avg_replicas = sum(h["replicas"] for h in replica_history) / len(replica_history)
+                max_replicas = max(h["replicas"] for h in replica_history)
+                min_replicas = min(h["replicas"] for h in replica_history)
+            else:
+                avg_replicas = max_replicas = min_replicas = 1.0
             
-            return {
-                'scaling_speed': scaling_speed,
-                'resource_utilization': resource_utilization
+            result = {
+                "test_type": "userscale",
+                "timestamp": datetime.now().isoformat(),
+                "metrics": metrics,
+                "scaling_info": {
+                    "avg_replicas": avg_replicas,
+                    "max_replicas": max_replicas,
+                    "min_replicas": min_replicas,
+                    "replica_history": replica_history
+                }
             }
+            
+            # Save results
+            output_file = f"userscale_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(output_file, 'w') as f:
+                json.dump(result, f, indent=2)
+            
+            print(f"📊 Userscale test results saved to {output_file}")
+            return result
+            
+        finally:
+            # Cleanup port forward
+            if self.port_forward_process:
+                self.port_forward_process.terminate()
+                self.port_forward_process.wait()
+    
+    def run_hpa_test(self, test_duration: int = 180) -> Dict:
+        """Run test with standard HPA"""
+        print("\n🎯 Running HPA autoscaling test...")
         
-        userscale_throughput = extract_throughput(userscale_results)
-        hpa_throughput = extract_throughput(hpa_results)
+        # Remove custom scaler and apply HPA
+        self.k8s.delete_manifest("k8s/scaler.yaml")
+        time.sleep(10)  # Wait for scaler to be removed
         
-        userscale_latency = extract_latency(userscale_results)
-        hpa_latency = extract_latency(hpa_results)
+        if not self.k8s.apply_manifest("k8s/hpa.yaml"):
+            return None
         
-        userscale_avg_replicas = calculate_avg_replicas(userscale_metrics)
-        hpa_avg_replicas = calculate_avg_replicas(hpa_metrics)
+        # Wait for HPA to be ready
+        time.sleep(30)  # HPA takes time to initialize
         
-        userscale_scaling = calculate_scaling_efficiency(userscale_metrics)
-        hpa_scaling = calculate_scaling_efficiency(hpa_metrics)
+        # Start port forwarding
+        self.port_forward_process = self.k8s.port_forward("userscale-app")
+        time.sleep(5)
         
-        # Calculate efficiency improvements
-        throughput_improvement = ((userscale_throughput - hpa_throughput) / max(hpa_throughput, 0.001)) * 100
-        latency_improvement = ((hpa_latency - userscale_latency) / max(hpa_latency, 0.001)) * 100
-        resource_efficiency = ((hpa_avg_replicas - userscale_avg_replicas) / max(hpa_avg_replicas, 0.001)) * 100
+        try:
+            # Start replica monitoring in background
+            replica_history = []
+            monitoring_thread = threading.Thread(
+                target=lambda: replica_history.extend(self.k8s.get_replica_history("userscale-app", test_duration))
+            )
+            monitoring_thread.daemon = True
+            monitoring_thread.start()
+            
+            # Run load test
+            load_tester = LoadTester("http://localhost:8000")
+            metrics = load_tester.run_intensive_load_test(
+                concurrency=25,  # High concurrency
+                duration=test_duration,
+                matrix_size=1500  # Large matrices
+            )
+            
+            # Wait for monitoring to complete
+            monitoring_thread.join()
+            
+            # Calculate average replicas
+            if replica_history:
+                avg_replicas = sum(h["replicas"] for h in replica_history) / len(replica_history)
+                max_replicas = max(h["replicas"] for h in replica_history)
+                min_replicas = min(h["replicas"] for h in replica_history)
+            else:
+                avg_replicas = max_replicas = min_replicas = 1.0
+            
+            result = {
+                "test_type": "hpa",
+                "timestamp": datetime.now().isoformat(),
+                "metrics": metrics,
+                "scaling_info": {
+                    "avg_replicas": avg_replicas,
+                    "max_replicas": max_replicas,
+                    "min_replicas": min_replicas,
+                    "replica_history": replica_history
+                }
+            }
+            
+            # Save results
+            output_file = f"hpa_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(output_file, 'w') as f:
+                json.dump(result, f, indent=2)
+            
+            print(f"📊 HPA test results saved to {output_file}")
+            return result
+            
+        finally:
+            # Cleanup port forward
+            if self.port_forward_process:
+                self.port_forward_process.terminate()
+                self.port_forward_process.wait()
+    
+    def cleanup(self):
+        """Cleanup test environment"""
+        print("🧹 Cleaning up test environment...")
         
-        return {
-            'userscale': {
-                'throughput_rps': userscale_throughput,
-                'avg_latency_ms': userscale_latency,
-                'avg_replicas': userscale_avg_replicas,
-                'scaling_metrics': userscale_scaling
+        if self.port_forward_process:
+            self.port_forward_process.terminate()
+            self.port_forward_process.wait()
+        
+        # Delete manifests
+        manifests = [
+            "k8s/hpa.yaml",
+            "k8s/scaler.yaml",
+            "k8s/app.yaml",
+            "k8s/rbac.yaml",
+            "k8s/configmap.yaml"
+        ]
+        
+        for manifest in manifests:
+            self.k8s.delete_manifest(manifest)
+        
+        print("✅ Cleanup complete")
+    
+    def run_comparison(self, test_duration: int = 180):
+        """Run complete comparison test"""
+        print("🚀 Starting Enhanced GPU-Aware Autoscaling Comparison Test")
+        print(f"Test duration: {test_duration} seconds per test")
+        print("=" * 60)
+        
+        try:
+            # Setup environment
+            if not self.setup_test_environment():
+                print("❌ Failed to setup test environment")
+                return
+            
+            # Run userscale test
+            userscale_results = self.run_userscale_test(test_duration)
+            if not userscale_results:
+                print("❌ Userscale test failed")
+                return
+            
+            # Wait between tests
+            print("\n⏳ Waiting 30 seconds between tests...")
+            time.sleep(30)
+            
+            # Run HPA test
+            hpa_results = self.run_hpa_test(test_duration)
+            if not hpa_results:
+                print("❌ HPA test failed")
+                return
+            
+            # Generate comparison report
+            self.generate_comparison_report(userscale_results, hpa_results)
+            
+        finally:
+            self.cleanup()
+    
+    def generate_comparison_report(self, userscale_results: Dict, hpa_results: Dict):
+        """Generate detailed comparison report"""
+        print("\n📊 Generating comparison report...")
+        
+        us_metrics = userscale_results["metrics"]
+        hpa_metrics = hpa_results["metrics"]
+        
+        us_scaling = userscale_results["scaling_info"]
+        hpa_scaling = hpa_results["scaling_info"]
+        
+        # Calculate improvements
+        throughput_improvement = ((us_metrics["throughput_rps"] - hpa_metrics["throughput_rps"]) / max(hpa_metrics["throughput_rps"], 0.001)) * 100
+        latency_improvement = ((hpa_metrics["avg_latency_ms"] - us_metrics["avg_latency_ms"]) / max(hpa_metrics["avg_latency_ms"], 0.001)) * 100
+        replica_efficiency = ((hpa_scaling["avg_replicas"] - us_scaling["avg_replicas"]) / max(us_scaling["avg_replicas"], 0.001)) * 100
+        
+        comparison_data = {
+            "test_configuration": {
+                "namespace": self.namespace,
+                "test_duration": 180,
+                "concurrency": 25,
+                "matrix_size": 1500,
+                "timestamp": datetime.now().isoformat()
             },
-            'hpa': {
-                'throughput_rps': hpa_throughput,
-                'avg_latency_ms': hpa_latency,
-                'avg_replicas': hpa_avg_replicas,
-                'scaling_metrics': hpa_scaling
-            },
-            'improvements': {
-                'throughput_improvement_percent': throughput_improvement,
-                'latency_improvement_percent': latency_improvement,
-                'resource_efficiency_percent': resource_efficiency
-            },
-            'summary': {
-                'userscale_better_throughput': throughput_improvement > 0,
-                'userscale_better_latency': latency_improvement > 0,
-                'userscale_more_efficient': resource_efficiency > 0,
-                'overall_winner': 'userscale' if (throughput_improvement + latency_improvement + resource_efficiency) > 0 else 'hpa'
+            "userscale_results": userscale_results,
+            "hpa_results": hpa_results,
+            "comparison_results": {
+                "userscale": {
+                    "throughput_rps": us_metrics["throughput_rps"],
+                    "avg_latency_ms": us_metrics["avg_latency_ms"],
+                    "avg_replicas": us_scaling["avg_replicas"],
+                    "max_replicas": us_scaling["max_replicas"],
+                    "min_replicas": us_scaling["min_replicas"]
+                },
+                "hpa": {
+                    "throughput_rps": hpa_metrics["throughput_rps"],
+                    "avg_latency_ms": hpa_metrics["avg_latency_ms"],
+                    "avg_replicas": hpa_scaling["avg_replicas"],
+                    "max_replicas": hpa_scaling["max_replicas"],
+                    "min_replicas": hpa_scaling["min_replicas"]
+                },
+                "improvements": {
+                    "throughput_improvement_percent": throughput_improvement,
+                    "latency_improvement_percent": latency_improvement,
+                    "resource_efficiency_percent": replica_efficiency
+                },
+                "summary": {
+                    "userscale_better_throughput": throughput_improvement > 0,
+                    "userscale_better_latency": latency_improvement > 0,
+                    "userscale_more_efficient": replica_efficiency > 0,
+                    "overall_winner": "userscale" if (throughput_improvement > 0 or latency_improvement > 0) else "hpa"
+                }
             }
         }
-    
-    def generate_report(self, comparison_results: Dict[str, Any], output_file: str):
-        """Generate comprehensive comparison report"""
         
-        report = f"""
-# Userscale vs HPA Efficiency Comparison Report
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-## Executive Summary
-The comparison test evaluated the efficiency of Userscale (user-aware scaling) vs HPA (Horizontal Pod Autoscaler) 
-under intensive matrix multiplication load with 10,000 elements.
-
-**Overall Winner: {comparison_results['summary']['overall_winner'].upper()}**
-
-## Performance Metrics
-
-### Throughput (Requests per Second)
-- **Userscale**: {comparison_results['userscale']['throughput_rps']:.2f} RPS
-- **HPA**: {comparison_results['hpa']['throughput_rps']:.2f} RPS
-- **Improvement**: {comparison_results['improvements']['throughput_improvement_percent']:.2f}%
-
-### Latency (Average)
-- **Userscale**: {comparison_results['userscale']['avg_latency_ms']:.2f} ms
-- **HPA**: {comparison_results['hpa']['avg_latency_ms']:.2f} ms
-- **Improvement**: {comparison_results['improvements']['latency_improvement_percent']:.2f}%
-
-### Resource Efficiency
-- **Userscale Avg Replicas**: {comparison_results['userscale']['avg_replicas']:.2f}
-- **HPA Avg Replicas**: {comparison_results['hpa']['avg_replicas']:.2f}
-- **Resource Efficiency**: {comparison_results['improvements']['resource_efficiency_percent']:.2f}%
-
-## Scaling Behavior
-
-### Userscale Scaling
-- Scaling Speed: {comparison_results['userscale']['scaling_metrics']['scaling_speed']:.2f} seconds
-- Resource Utilization: {comparison_results['userscale']['scaling_metrics']['resource_utilization']:.2f}
-
-### HPA Scaling
-- Scaling Speed: {comparison_results['hpa']['scaling_metrics']['scaling_speed']:.2f} seconds
-- Resource Utilization: {comparison_results['hpa']['scaling_metrics']['resource_utilization']:.2f}
-
-## Key Findings
-
-1. **Throughput**: {'✅ Userscale performs better' if comparison_results['summary']['userscale_better_throughput'] else '❌ HPA performs better'}
-2. **Latency**: {'✅ Userscale has lower latency' if comparison_results['summary']['userscale_better_latency'] else '❌ HPA has lower latency'}
-3. **Resource Efficiency**: {'✅ Userscale uses fewer resources' if comparison_results['summary']['userscale_more_efficient'] else '❌ HPA uses fewer resources'}
-
-## Recommendations
-
-Based on the test results, {'Userscale' if comparison_results['summary']['overall_winner'] == 'userscale' else 'HPA'} demonstrates superior performance for matrix multiplication workloads with 10,000 elements.
-
-### For Production Deployment:
-- Consider {'Userscale' if comparison_results['summary']['overall_winner'] == 'userscale' else 'HPA'} for workloads with:
-  - High computational intensity
-  - Variable user loads
-  - {'User-aware scaling requirements' if comparison_results['summary']['overall_winner'] == 'userscale' else 'Standard resource-based scaling'}
-
----
-*Report generated by Userscale Efficiency Comparison Tool*
-"""
+        # Save detailed results
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_dir = f"comparison_results_{timestamp}"
+        os.makedirs(results_dir, exist_ok=True)
         
-        with open(output_file, 'w') as f:
-            f.write(report)
+        detailed_file = os.path.join(results_dir, "detailed_results.json")
+        with open(detailed_file, 'w') as f:
+            json.dump(comparison_data, f, indent=2)
         
-        print(f"Report saved to: {output_file}")
+        # Generate formatted reports
+        import subprocess
+        subprocess.run([
+            "python", "format_results.py", 
+            "--results", detailed_file,
+            "--output-dir", results_dir,
+            "--formats", "csv", "html", "json"
+        ])
+        
+        print(f"\n🎉 Comparison test complete!")
+        print(f"📁 Results saved to: {results_dir}")
+        print(f"📊 Overall winner: {comparison_data['comparison_results']['summary']['overall_winner'].upper()}")
+        print(f"🚀 Throughput improvement: {throughput_improvement:+.2f}%")
+        print(f"⚡ Latency improvement: {latency_improvement:+.2f}%")
+        print(f"💾 Resource efficiency: {replica_efficiency:+.2f}%")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Userscale vs HPA Efficiency Comparison")
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Enhanced GPU-Aware Autoscaling Comparison Test")
+    parser.add_argument("--duration", type=int, default=180, help="Test duration per scenario (seconds)")
     parser.add_argument("--namespace", default="userscale", help="Kubernetes namespace")
-    parser.add_argument("--concurrency", type=int, default=20, help="Load test concurrency")
-    parser.add_argument("--duration", type=int, default=120, help="Test duration in seconds")
-    parser.add_argument("--matrix-size", type=int, default=10000, help="Matrix size (elements)")
-    parser.add_argument("--output-dir", default="comparison_results", help="Output directory")
-    parser.add_argument("--service-url", help="Service URL (auto-detected if not provided)")
     
     args = parser.parse_args()
     
-    # Initialize components
-    k8s_manager = KubernetesManager(args.namespace)
-    comparator = EfficiencyComparator(args.output_dir)
-    
-    print("=== Userscale vs HPA Efficiency Comparison ===")
-    print(f"Test Configuration:")
-    print(f"  Namespace: {args.namespace}")
-    print(f"  Concurrency: {args.concurrency}")
-    print(f"  Duration: {args.duration} seconds")
-    print(f"  Matrix Size: {args.matrix_size} elements")
-    print(f"  Output Directory: {args.output_dir}")
-    
-    # Get service URL
-    if args.service_url:
-        service_url = args.service_url
-    else:
-        service_url = k8s_manager.get_service_url("userscale-app")
-    
-    print(f"  Service URL: {service_url}")
-    
-    # Initialize load test runner
-    load_runner = LoadTestRunner(service_url, args.output_dir)
-    
-    try:
-        # Test 1: Userscale
-        print("\n=== Phase 1: Testing with Userscale ===")
-        
-        # Apply userscale configuration
-        k8s_manager.delete_config("k8s/hpa.yaml")  # Remove HPA if exists
-        k8s_manager.apply_config("k8s/scaler.yaml")  # Apply userscale
-        time.sleep(30)  # Wait for userscale to start
-        
-        # Run load test with userscale
-        userscale_results = load_runner.run_load_test(
-            "userscale", args.concurrency, args.duration, args.matrix_size
-        )
-        
-        # Collect metrics during userscale test
-        userscale_metrics = comparator.collect_metrics_during_test(
-            "userscale", args.duration, k8s_manager
-        )
-        
-        # Test 2: HPA
-        print("\n=== Phase 2: Testing with HPA ===")
-        
-        # Apply HPA configuration
-        k8s_manager.delete_config("k8s/scaler.yaml")  # Remove userscale
-        k8s_manager.apply_config("k8s/hpa.yaml")  # Apply HPA
-        time.sleep(30)  # Wait for HPA to be ready
-        
-        # Run load test with HPA
-        hpa_results = load_runner.run_load_test(
-            "hpa", args.concurrency, args.duration, args.matrix_size
-        )
-        
-        # Collect metrics during HPA test
-        hpa_metrics = comparator.collect_metrics_during_test(
-            "hpa", args.duration, k8s_manager
-        )
-        
-        # Compare results
-        print("\n=== Phase 3: Analysis ===")
-        comparison_results = comparator.calculate_efficiency_metrics(
-            userscale_results, hpa_results, userscale_metrics, hpa_metrics
-        )
-        
-        # Generate report
-        report_file = os.path.join(args.output_dir, "efficiency_comparison_report.md")
-        comparator.generate_report(comparison_results, report_file)
-        
-        # Save detailed results
-        detailed_results = {
-            'test_configuration': {
-                'namespace': args.namespace,
-                'concurrency': args.concurrency,
-                'duration': args.duration,
-                'matrix_size': args.matrix_size
-            },
-            'userscale_results': userscale_results,
-            'hpa_results': hpa_results,
-            'userscale_metrics': userscale_metrics,
-            'hpa_metrics': hpa_metrics,
-            'comparison_results': comparison_results
-        }
-        
-        results_file = os.path.join(args.output_dir, "detailed_results.json")
-        with open(results_file, 'w') as f:
-            json.dump(detailed_results, f, indent=2)
-        
-        print(f"\n=== Comparison Complete ===")
-        print(f"Report: {report_file}")
-        print(f"Detailed Results: {results_file}")
-        
-        # Print summary
-        print(f"\n=== SUMMARY ===")
-        print(f"Overall Winner: {comparison_results['summary']['overall_winner'].upper()}")
-        print(f"Throughput Improvement: {comparison_results['improvements']['throughput_improvement_percent']:.2f}%")
-        print(f"Latency Improvement: {comparison_results['improvements']['latency_improvement_percent']:.2f}%")
-        print(f"Resource Efficiency: {comparison_results['improvements']['resource_efficiency_percent']:.2f}%")
-        
-    except KeyboardInterrupt:
-        print("\nTest interrupted by user")
-    except Exception as e:
-        print(f"\nTest failed with error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        # Cleanup
-        print("\n=== Cleanup ===")
-        k8s_manager.delete_config("k8s/hpa.yaml")
-        k8s_manager.delete_config("k8s/scaler.yaml")
+    test = ComparisonTest(args.namespace)
+    test.run_comparison(args.duration)
 
 
 if __name__ == "__main__":

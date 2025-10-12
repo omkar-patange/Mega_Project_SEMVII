@@ -14,47 +14,62 @@ spec:
     metadata:
       labels:
         app: userscale-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
     spec:
       containers:
-        - name: app
-          image: userscale-app:local
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8000
-          env:
-            - name: PORT
-              value: "8000"
-          command: ["python", "-m", "app.main"]
-          resources:
-            requests:
-              cpu: "200m"
-              memory: "256Mi"
-            limits:
-              cpu: "1"
-              memory: "512Mi"
-          readinessProbe:
-            httpGet:
-              path: /healthz
-              port: 8000
-            periodSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 8000
-            periodSeconds: 10
-      nodeSelector: {}
+      - name: app
+        image: userscale-app:local
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: PORT
+          value: "8000"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        # Add health check endpoint
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 30
+      restartPolicy: Always
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: userscale-app
   namespace: userscale
+  labels:
+    app: userscale-app
 spec:
   selector:
     app: userscale-app
   ports:
-    - name: http
-      port: 80
-      targetPort: 8000
-
-
+  - port: 8000
+    targetPort: 8000
+    name: http
+  type: ClusterIP

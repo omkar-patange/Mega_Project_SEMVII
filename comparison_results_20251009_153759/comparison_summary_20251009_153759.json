@@ -1,0 +1,40 @@
+{
+  "test_info": {
+    "timestamp": "2025-10-09T15:37:59.658890",
+    "configuration": {
+      "namespace": "userscale",
+      "concurrency": 10,
+      "duration": 60,
+      "matrix_size": 10000
+    }
+  },
+  "performance_summary": {
+    "userscale": {
+      "throughput_rps": 70.46396229867717,
+      "avg_latency_ms": 142.11890032978496,
+      "avg_replicas": 1.0
+    },
+    "hpa": {
+      "throughput_rps": 69.71682983688284,
+      "avg_latency_ms": 143.618140193277,
+      "avg_replicas": 1.0
+    },
+    "improvements": {
+      "throughput_improvement_percent": 1.0716672911582612,
+      "latency_improvement_percent": 1.0439070311552496,
+      "resource_efficiency_percent": 0.0
+    },
+    "summary": {
+      "userscale_better_throughput": true,
+      "userscale_better_latency": true,
+      "userscale_more_efficient": false,
+      "overall_winner": "userscale"
+    }
+  },
+  "key_metrics": {
+    "overall_winner": "userscale",
+    "throughput_improvement": 1.0716672911582612,
+    "latency_improvement": 1.0439070311552496,
+    "resource_efficiency": 0.0
+  }
+}

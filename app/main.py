@@ -10,14 +10,20 @@ import math
 
 try:
     import cupy as cp  # Optional GPU
+    GPU_AVAILABLE = True
+    print("🚀 GPU support enabled with CuPy!")
 except Exception:  # pragma: no cover
     cp = None
+    GPU_AVAILABLE = False
+    print("⚠️  GPU support not available, using CPU fallback")
 
-app = FastAPI(title="Userscale App")
+app = FastAPI(title="Userscale App - GPU-Aware Autoscaling")
 
 start_time = time.time()
 active_users = 0
 latency_hist: Dict[str, list] = {"matrix": [], "stream": [], "gpu_job": []}
+request_count = 0
+total_cpu_time = 0.0
 
 
 class BackgroundLoadManager:
@@ -40,7 +46,9 @@ class BackgroundLoadManager:
                 a = cp.random.rand(512, 512, dtype=cp.float32)
                 b = cp.random.rand(512, 512, dtype=cp.float32)
                 using_gpu_backend = True
-            except Exception:
+                print(f"🔥 GPU backend initialized for background load")
+            except Exception as e:
+                print(f"⚠️  GPU backend failed: {e}")
                 using_gpu_backend = False
 
         while not stop_event.is_set():
@@ -141,23 +149,62 @@ def record_latency(endpoint: str, ms: float, limit: int = 200):
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok", "uptime_s": int(time.time() - start_time)}
+    return {"status": "ok", "uptime_s": int(time.time() - start_time), "gpu_available": GPU_AVAILABLE}
 
 
 @app.get("/matrix")
-def matrix(size: int = Query(200, ge=5, le=1500)):
-    global active_users
+def matrix(size: int = Query(200, ge=5, le=3000)):
+    global active_users, request_count, total_cpu_time
     active_users += 1
+    request_count += 1
     t0 = time.time()
     try:
+        # More intensive computation for better scaling triggers
         a = np.random.rand(size, size).astype(np.float32)
         b = np.random.rand(size, size).astype(np.float32)
         c = a @ b
-        checksum = float(np.sum(c))
-        return {"size": size, "checksum": checksum}
+        
+        # Additional computation to increase CPU load
+        d = np.linalg.inv(c + np.eye(size) * 0.001)  # Add small identity to avoid singular matrix
+        checksum = float(np.sum(d))
+        
+        total_cpu_time += time.time() - t0
+        return {"size": size, "checksum": checksum, "gpu_used": False}
     finally:
         dt = (time.time() - t0) * 1000
         record_latency("matrix", dt)
+        active_users -= 1
+
+
+@app.get("/gpu_matrix")
+def gpu_matrix(size: int = Query(200, ge=5, le=3000)):
+    """GPU-accelerated matrix multiplication endpoint"""
+    global active_users, request_count, total_cpu_time
+    active_users += 1
+    request_count += 1
+    t0 = time.time()
+    
+    gpu_used = False
+    try:
+        if cp is not None:
+            # GPU computation
+            a = cp.random.rand(size, size, dtype=cp.float32)
+            b = cp.random.rand(size, size, dtype=cp.float32)
+            c = a @ b
+            checksum = float(cp.sum(c))
+            gpu_used = True
+        else:
+            # Fallback to CPU
+            a = np.random.rand(size, size).astype(np.float32)
+            b = np.random.rand(size, size).astype(np.float32)
+            c = a @ b
+            checksum = float(np.sum(c))
+        
+        total_cpu_time += time.time() - t0
+        return {"size": size, "checksum": checksum, "gpu_used": gpu_used}
+    finally:
+        dt = (time.time() - t0) * 1000
+        record_latency("gpu_job", dt)
         active_users -= 1
 
 
@@ -184,12 +231,24 @@ def gpu_job(work_ms: int = Query(1000, ge=1, le=60000)):
     global active_users
     active_users += 1
     t0 = time.time()
+    gpu_used = False
     try:
-        # If GPU libs not available, simulate compute-bound work
-        end = time.time() + work_ms / 1000.0
-        while time.time() < end:
-            _ = np.tanh(np.random.rand(1024).astype(np.float32)).sum()
-        return {"work_ms": work_ms}
+        if cp is not None:
+            # GPU computation
+            end = time.time() + work_ms / 1000.0
+            while time.time() < end:
+                a = cp.random.rand(1024, 1024, dtype=cp.float32)
+                b = cp.random.rand(1024, 1024, dtype=cp.float32)
+                c = a @ b
+                _ = cp.sum(c)
+            gpu_used = True
+        else:
+            # If GPU libs not available, simulate compute-bound work
+            end = time.time() + work_ms / 1000.0
+            while time.time() < end:
+                _ = np.tanh(np.random.rand(1024).astype(np.float32)).sum()
+        
+        return {"work_ms": work_ms, "gpu_used": gpu_used}
     finally:
         dt = (time.time() - t0) * 1000
         record_latency("gpu_job", dt)
@@ -198,16 +257,34 @@ def gpu_job(work_ms: int = Query(1000, ge=1, le=60000)):
 
 @app.get("/metrics")
 def metrics():
+    global request_count, total_cpu_time
     cpu_percent = psutil.cpu_percent(interval=0.0)
     mem = psutil.virtual_memory()
+    
+    # Calculate average request processing time
+    avg_request_time = total_cpu_time / max(request_count, 1)
+    
     response: Dict[str, Any] = {
         "active_users": max(active_users, 0),
         "cpu_percent": cpu_percent,
         "memory_percent": mem.percent,
+        "request_count": request_count,
+        "avg_request_time_ms": avg_request_time * 1000,
         "latency_ms_p50": {k: (np.percentile(v, 50) if v else 0.0) for k, v in latency_hist.items()},
         "latency_ms_p90": {k: (np.percentile(v, 90) if v else 0.0) for k, v in latency_hist.items()},
+        "latency_ms_p95": {k: (np.percentile(v, 95) if v else 0.0) for k, v in latency_hist.items()},
         "load_status": load_mgr.get_status(),
+        "gpu_available": GPU_AVAILABLE,
     }
+    
+    # Add GPU metrics if available
+    if GPU_AVAILABLE and cp is not None:
+        try:
+            # Simple GPU memory usage (if available)
+            response["gpu_memory_used_mb"] = 0  # Placeholder for actual GPU memory usage
+        except Exception:
+            pass
+    
     return JSONResponse(response)
 
 
@@ -254,9 +331,27 @@ def load_status():
     return load_mgr.get_status()
 
 
+@app.get("/scaling-info")
+def scaling_info():
+    """Endpoint to provide scaling information for monitoring"""
+    return {
+        "current_active_users": max(active_users, 0),
+        "gpu_available": GPU_AVAILABLE,
+        "recommended_scaling_factors": {
+            "users_per_pod": 10,
+            "cpu_threshold": 50,
+            "gpu_threshold": 60,
+            "latency_threshold_ms": 200
+        },
+        "performance_metrics": {
+            "avg_latency_p50": {k: (np.percentile(v, 50) if v else 0.0) for k, v in latency_hist.items()},
+            "total_requests": request_count,
+            "uptime_seconds": int(time.time() - start_time)
+        }
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=False)
-
-
